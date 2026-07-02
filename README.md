@@ -68,6 +68,12 @@ python main.py --input examples/sample.cpp --output out/sample.py
 
 If your entrypoint differs, update the command accordingly.
 
+## 🤗 Hugging Face Model
+
+You can try the hosted model here:
+
+- https://huggingface.co/spaces/DxCode/cplusplus-to-python
+
 ## 🧪 Testing
 
 ```bash
