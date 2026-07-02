@@ -81,7 +81,7 @@ if translate_clicked:
         #   cold, overloaded, or unreachable.
         payload = {"source_code": cleaned_source_code}
 
-        with st.spinner("Translating with CodeT5..."):
+        with st.spinner("Translating..."):
             try:
                 response = requests.post(
                     BACKEND_URL,

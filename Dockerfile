@@ -16,10 +16,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the model and tokenizer to bake them into the Docker image layers.
-# This makes container startup extremely fast and reliable.
-RUN python -c "from transformers import AutoModelForSeq2SeqLM, AutoTokenizer; AutoTokenizer.from_pretrained('Salesforce/codet5-small'); AutoModelForSeq2SeqLM.from_pretrained('Salesforce/codet5-small')"
-
 # Copy the rest of the application
 COPY backend ./backend
 COPY frontend ./frontend

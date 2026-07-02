@@ -6,6 +6,7 @@ Run locally with:
 """
 
 from contextlib import asynccontextmanager
+import os
 from typing import Any
 
 import torch
@@ -14,8 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
+from backend.cpp_python_translator import translate_competitive_cpp
 
-MODEL_NAME = "Salesforce/codet5-small"
+
+TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "rules").strip().lower()
+USE_MODEL_TRANSLATOR = TRANSLATOR_MODE in {"model", "hybrid"}
+MODEL_NAME = os.getenv("TRANSLATION_MODEL_NAME", "Salesforce/codet5-small")
 TASK_PREFIX = "translate C++ to Python: "
 MAX_INPUT_TOKENS = 512
 MAX_OUTPUT_TOKENS = 512
@@ -40,12 +45,16 @@ class TranslationResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Load the model and tokenizer once when the API process starts.
+    Load the model and tokenizer once when the API process starts, if enabled.
 
     FastAPI stores these objects on app.state so every request can reuse the
     same in-memory tokenizer and PyTorch model instead of downloading/loading
     them again.
     """
+
+    if not USE_MODEL_TRANSLATOR:
+        yield
+        return
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -94,7 +103,7 @@ def health() -> dict[str, str]:
 @app.post("/translate", response_model=TranslationResponse)
 def translate_code(request: TranslationRequest) -> TranslationResponse:
     """
-    Translate C++ source code to Python using CodeT5.
+    Translate C++ source code to Python.
 
     HTTP handling:
     - FastAPI parses the incoming JSON request body into TranslationRequest.
@@ -106,6 +115,9 @@ def translate_code(request: TranslationRequest) -> TranslationResponse:
     source_code = request.source_code.strip()
     if not source_code:
         raise HTTPException(status_code=422, detail="source_code cannot be empty")
+
+    if TRANSLATOR_MODE in {"rules", "hybrid"}:
+        return TranslationResponse(translated_code=translate_competitive_cpp(source_code))
 
     tokenizer: Any = app.state.tokenizer
     model: torch.nn.Module = app.state.model
