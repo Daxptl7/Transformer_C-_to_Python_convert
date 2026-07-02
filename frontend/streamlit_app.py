@@ -10,8 +10,13 @@ import os
 import requests
 import streamlit as st
 
+try:
+    from backend.cpp_python_translator import translate_competitive_cpp
+except ImportError:
+    translate_competitive_cpp = None
 
-DEFAULT_BACKEND_URL = "http://localhost:8000/translate"
+
+DEFAULT_BACKEND_URL = "http://127.0.0.1:8000/translate"
 BACKEND_URL = os.getenv("TRANSLATE_API_URL", DEFAULT_BACKEND_URL)
 REQUEST_TIMEOUT_SECONDS = 120
 
@@ -66,6 +71,21 @@ translate_clicked = st.button(
 )
 
 
+def render_translated_code(translated_code: str) -> None:
+    if not translated_code:
+        st.error("No translated code was produced.")
+        return
+
+    st.subheader("Translated Python")
+    st.code(translated_code, language="python")
+
+
+def translate_locally(source_code_to_translate: str) -> str | None:
+    if translate_competitive_cpp is None:
+        return None
+    return translate_competitive_cpp(source_code_to_translate)
+
+
 if translate_clicked:
     cleaned_source_code = source_code.strip()
 
@@ -98,27 +118,37 @@ if translate_clicked:
                 response_json = response.json()
                 translated_code = response_json.get("translated_code", "")
 
-                if not translated_code:
-                    st.error("The backend responded successfully but returned no code.")
-                else:
-                    st.subheader("Translated Python")
-                    st.code(translated_code, language="python")
+                render_translated_code(translated_code)
 
             except requests.exceptions.ConnectionError:
-                st.error(
-                    "Could not reach the FastAPI backend. "
-                    f"Start it with `uvicorn backend.fastapi_app:app --reload` "
-                    f"and confirm it is listening at {BACKEND_URL}."
-                )
+                translated_code = translate_locally(cleaned_source_code)
+                if translated_code is None:
+                    st.error(
+                        "Could not reach the FastAPI backend and local translation "
+                        "is unavailable in this build."
+                    )
+                else:
+                    st.warning("FastAPI was unavailable, so local translation was used.")
+                    render_translated_code(translated_code)
             except requests.exceptions.Timeout:
-                st.error(
-                    "The translation request timed out. "
-                    "The model may still be loading or the input may be too large."
-                )
+                translated_code = translate_locally(cleaned_source_code)
+                if translated_code is None:
+                    st.error(
+                        "The translation request timed out and local translation "
+                        "is unavailable in this build."
+                    )
+                else:
+                    st.warning("The backend timed out, so local translation was used.")
+                    render_translated_code(translated_code)
             except requests.exceptions.HTTPError as exc:
                 error_message = response.text if "response" in locals() else str(exc)
                 st.error(f"The backend returned an error: {error_message}")
             except ValueError:
                 st.error("The backend response was not valid JSON.")
             except requests.exceptions.RequestException as exc:
-                st.error(f"Request failed: {exc}")
+                translated_code = translate_locally(cleaned_source_code)
+                if translated_code is None:
+                    st.error(f"Request failed: {exc}")
+                else:
+                    st.warning("The backend request failed, so local translation was used.")
+                    render_translated_code(translated_code)

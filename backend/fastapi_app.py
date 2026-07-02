@@ -9,17 +9,15 @@ from contextlib import asynccontextmanager
 import os
 from typing import Any
 
-import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 from backend.cpp_python_translator import translate_competitive_cpp
 
 
 TRANSLATOR_MODE = os.getenv("TRANSLATOR_MODE", "rules").strip().lower()
-USE_MODEL_TRANSLATOR = TRANSLATOR_MODE in {"model", "hybrid"}
+USE_MODEL_TRANSLATOR = TRANSLATOR_MODE == "model"
 MODEL_NAME = os.getenv("TRANSLATION_MODEL_NAME", "Salesforce/codet5-small")
 TASK_PREFIX = "translate C++ to Python: "
 MAX_INPUT_TOKENS = 512
@@ -56,6 +54,9 @@ async def lifespan(app: FastAPI):
         yield
         return
 
+    import torch
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -72,6 +73,8 @@ async def lifespan(app: FastAPI):
     # Explicit cleanup is helpful in long-running services and test suites.
     del app.state.model
     del app.state.tokenizer
+    import torch
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -116,12 +119,12 @@ def translate_code(request: TranslationRequest) -> TranslationResponse:
     if not source_code:
         raise HTTPException(status_code=422, detail="source_code cannot be empty")
 
-    if TRANSLATOR_MODE in {"rules", "hybrid"}:
+    if not USE_MODEL_TRANSLATOR:
         return TranslationResponse(translated_code=translate_competitive_cpp(source_code))
 
     tokenizer: Any = app.state.tokenizer
-    model: torch.nn.Module = app.state.model
-    device: torch.device = app.state.device
+    model: Any = app.state.model
+    device: Any = app.state.device
 
     model_input = f"{TASK_PREFIX}{source_code}"
 
